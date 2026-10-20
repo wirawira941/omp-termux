@@ -41,6 +41,18 @@ strip = "symbols"
 EOF
 fi
 
+# Apply the Android source patches (cfg gates for target_os = "android",
+# the Android clipboard backend, shell tweaks). The original VM build
+# carried these as uncommitted working-tree changes on top of the
+# v18.12.2 tag; upstream does not compile for Android without them
+# (pi-builtins fails with 15 "configured out" errors). The --check guard
+# makes re-runs on an already-patched tree a no-op.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if git apply --check "$SCRIPT_DIR/omp-android-source.patch" 2>/dev/null; then
+	git apply "$SCRIPT_DIR/omp-android-source.patch"
+	echo "Applied omp-android-source.patch"
+fi
+
 cargo build -p pi-natives --target aarch64-linux-android --profile ci
 
 # A raw cargo build carries no version stamp, and the addon loader rejects

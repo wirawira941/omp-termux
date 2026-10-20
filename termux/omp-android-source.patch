@@ -1,0 +1,342 @@
+diff --git a/crates/pi-builtins/src/kill.rs b/crates/pi-builtins/src/kill.rs
+index 0d68284..ff6e8ca 100644
+--- a/crates/pi-builtins/src/kill.rs
++++ b/crates/pi-builtins/src/kill.rs
+@@ -692,7 +692,7 @@ pub(crate) fn signal_number(value: &str) -> Option<i32> {
+ 		.or_else(|| value.strip_prefix("sig"))
+ 		.unwrap_or(value);
+ 	if let Ok(number) = value.parse::<i32>() {
+-		#[cfg(target_os = "linux")]
++		#[cfg(any(target_os = "linux", target_os = "android"))]
+ 		return (0..=libc::SIGRTMAX()).contains(&number).then_some(number);
+ 		#[cfg(target_os = "macos")]
+ 		return (0..=31).contains(&number).then_some(number);
+diff --git a/crates/pi-builtins/src/lib.rs b/crates/pi-builtins/src/lib.rs
+index efde45a..34d62b9 100644
+--- a/crates/pi-builtins/src/lib.rs
++++ b/crates/pi-builtins/src/lib.rs
+@@ -341,7 +341,7 @@ pub use proc_snapshot::{ProcInfo, ProcessStatus};
+ /// implementation.
+ #[cfg(all(
+ 	feature = "util.procs",
+-	any(target_os = "linux", target_os = "macos", target_os = "windows")
++	any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows")
+ ))]
+ pub use proc_snapshot::sys as proc_sys;
+ 
+diff --git a/crates/pi-builtins/src/proc_match.rs b/crates/pi-builtins/src/proc_match.rs
+index 44be1b4..5714ec8 100644
+--- a/crates/pi-builtins/src/proc_match.rs
++++ b/crates/pi-builtins/src/proc_match.rs
+@@ -283,7 +283,7 @@ async fn wait_for_exits(processes: &[proc_snapshot::ProcInfo]) {
+ }
+ 
+ /// Waits on a pidfd per process and returns the processes that need polling.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ async fn wait_for_watchable_exits(
+ 	processes: &[proc_snapshot::ProcInfo],
+ ) -> Vec<&proc_snapshot::ProcInfo> {
+@@ -335,7 +335,7 @@ async fn wait_for_watchable_exits(
+ }
+ 
+ /// No exit notification primitive is wired up here; every process is polled.
+-#[cfg(not(any(target_os = "linux", windows)))]
++#[cfg(not(any(target_os = "linux", target_os = "android", windows)))]
+ async fn wait_for_watchable_exits(
+ 	processes: &[proc_snapshot::ProcInfo],
+ ) -> Vec<&proc_snapshot::ProcInfo> {
+@@ -862,7 +862,7 @@ fn write_proc_match_help(
+ 	if mode == ProcMatchMode::Kill {
+ 		writeln!(output, "  -SIGNAL, --signal SIGNAL  choose signal (default TERM)")?;
+ 	}
+-	#[cfg(target_os = "linux")]
++	#[cfg(any(target_os = "linux", target_os = "android"))]
+ 	if mode == ProcMatchMode::Kill {
+ 		writeln!(output, "  -q value, --queue value  send an integer with sigqueue")?;
+ 	}
+diff --git a/crates/pi-builtins/src/proc_snapshot.rs b/crates/pi-builtins/src/proc_snapshot.rs
+index 3703153..2a3cf78 100644
+--- a/crates/pi-builtins/src/proc_snapshot.rs
++++ b/crates/pi-builtins/src/proc_snapshot.rs
+@@ -100,7 +100,7 @@ fn parse_procargs2(buffer: &[u8]) -> Vec<String> {
+ }
+ 
+ /// Linux process primitives: procfs and pidfds.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ pub mod sys {
+ 	use std::{
+ 		fs,
+@@ -181,7 +181,7 @@ pub mod sys {
+ 	}
+ }
+ 
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ mod proc_snapshot {
+ 	use std::{collections::HashMap, fs, os::fd::AsFd, time::Duration};
+ 
+@@ -1684,7 +1684,7 @@ mod proc_snapshot {
+ 	}
+ }
+ 
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ pub use proc_snapshot::{ProcInfo, threads_by_pid};
+ 
+ /// The processes a signal must never reach: this one and its ancestors.
+@@ -1708,7 +1708,7 @@ pub use proc_snapshot::{ProcInfo, threads_by_pid};
+ ///
+ /// Listing is unaffected: `pgrep` still reports ancestors and `ps` still shows
+ /// them. Only signalling consults this.
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ pub(crate) struct HostProcesses {
+ 	/// This process and its ancestors, nearest first.
+ 	pub pids:  smallvec::SmallVec<[i32; 16]>,
+@@ -1721,7 +1721,7 @@ pub(crate) struct HostProcesses {
+ /// Keeping the walk over this rather than over [`ProcInfo`] lets the recycling
+ /// cases — which are otherwise only reachable by winning a race against the OS —
+ /// be tested with a synthetic tree.
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ #[derive(Clone, Copy)]
+ struct ChainNode {
+ 	ppid:  Option<i32>,
+@@ -1731,7 +1731,7 @@ struct ChainNode {
+ 	start: u64,
+ }
+ 
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ impl HostProcesses {
+ 	/// Walks the parent chain from the current process, taking one process-table
+ 	/// snapshot.
+diff --git a/crates/pi-builtins/src/ps.rs b/crates/pi-builtins/src/ps.rs
+index d36b3f6..99b661e 100644
+--- a/crates/pi-builtins/src/ps.rs
++++ b/crates/pi-builtins/src/ps.rs
+@@ -1255,7 +1255,7 @@ fn format_ps_elapsed(duration: Duration) -> String {
+ 	}
+ }
+ 
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ fn ps_total_memory_bytes() -> Option<u64> {
+ 	let value = fs::read_to_string("/proc/meminfo")
+ 		.ok()?
+diff --git a/crates/pi-builtins/src/uptime.rs b/crates/pi-builtins/src/uptime.rs
+index 48eb9cb..d564da3 100644
+--- a/crates/pi-builtins/src/uptime.rs
++++ b/crates/pi-builtins/src/uptime.rs
+@@ -27,9 +27,9 @@ mod options {
+ /// `UTMP_FILE`).
+ #[cfg(target_vendor = "apple")]
+ const UTMP_FILE: &str = "/var/run/utmpx";
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ const UTMP_FILE: &str = "/var/run/utmp";
+-#[cfg(not(any(target_vendor = "apple", target_os = "linux")))]
++#[cfg(not(any(target_vendor = "apple", target_os = "linux", target_os = "android")))]
+ const UTMP_FILE: &str = "/etc/utmp";
+ 
+ /// Parsed `uptime` invocation.
+@@ -437,7 +437,7 @@ fn system_boot_time(_host: &Host) -> Option<i64> {
+ 
+ /// gnulib's Linux fallbacks: the modification time of a file only the boot
+ /// sequence touches, else now minus `CLOCK_BOOTTIME`.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ fn system_boot_time(host: &Host) -> Option<i64> {
+ 	const BOOT_TOUCHED_FILES: [&str; 4] = [
+ 		"/var/lib/systemd/random-seed",
+@@ -474,7 +474,7 @@ fn system_boot_time(_host: &Host) -> Option<i64> {
+ 	Some(Timestamp::now().as_second() - i64::try_from(since_boot).ok()?)
+ }
+ 
+-#[cfg(not(any(target_vendor = "apple", target_os = "linux", windows)))]
++#[cfg(not(any(target_vendor = "apple", target_os = "linux", target_os = "android", windows)))]
+ fn system_boot_time(_host: &Host) -> Option<i64> {
+ 	None
+ }
+diff --git a/crates/pi-natives/Cargo.toml b/crates/pi-natives/Cargo.toml
+index 908191b..4293c72 100644
+--- a/crates/pi-natives/Cargo.toml
++++ b/crates/pi-natives/Cargo.toml
+@@ -25,7 +25,6 @@ wayland-pipewire = ["dep:pipewire"]
+ [dependencies]
+ anyhow.workspace = true
+ async-trait.workspace = true
+-arboard.workspace = true
+ ast-grep-core.workspace = true
+ base64.workspace = true
+ clap.workspace = true
+@@ -130,6 +129,9 @@ napi-build.workspace = true
+ shlex.workspace = true
+ syntect.workspace = true
+ 
++[target.'cfg(not(target_os = "android"))'.dependencies]
++arboard.workspace = true
++
+ # Transitive-only pin: see find-msvc-tools in the root workspace manifest.
+ # `cfg(false)` is cargo's documented home for a version pin that no target
+ # links against (docs: Lints → unused_dependencies); the requirement still
+diff --git a/crates/pi-natives/src/clipboard_android.rs b/crates/pi-natives/src/clipboard_android.rs
+new file mode 100644
+index 0000000..0a25a5e
+--- /dev/null
++++ b/crates/pi-natives/src/clipboard_android.rs
+@@ -0,0 +1,39 @@
++//! Clipboard stub for Android.
++//!
++//! arboard does not support Android, so clipboard operations are no-ops here.
++
++use napi::{JsString, bindgen_prelude::*};
++use napi_derive::napi;
++
++use crate::task;
++
++/// Clipboard image payload encoded as PNG bytes.
++#[napi(object)]
++pub struct ClipboardImage {
++	/// PNG-encoded image bytes.
++	pub data:      Uint8Array,
++	/// MIME type for the encoded image payload.
++	pub mime_type: String,
++}
++
++/// Android stub: clipboard not supported.
++#[napi]
++pub fn copy_to_clipboard(_text: JsString) -> Result<()> {
++	Err(Error::from_reason("Clipboard not supported on Android"))
++}
++
++/// Android stub: clipboard not supported.
++#[napi]
++pub fn read_text_from_clipboard() -> task::Promise<Option<String>> {
++	task::blocking("clipboard.read_text", (), move |_| -> Result<Option<String>> {
++		Ok(None)
++	})
++}
++
++/// Android stub: clipboard not supported.
++#[napi]
++pub fn read_image_from_clipboard() -> task::Promise<Option<ClipboardImage>> {
++	task::blocking("clipboard.read_image", (), move |_| -> Result<Option<ClipboardImage>> {
++		Ok(None)
++	})
++}
+diff --git a/crates/pi-natives/src/desktop/ax.rs b/crates/pi-natives/src/desktop/ax.rs
+index 853d585..5f0509d 100644
+--- a/crates/pi-natives/src/desktop/ax.rs
++++ b/crates/pi-natives/src/desktop/ax.rs
+@@ -27,6 +27,9 @@ pub enum AxHandle {
+ 	/// `RuntimeId` cannot be read: all of them compare equal.
+ 	#[cfg(test)]
+ 	TestUnidentified(u64),
++	/// Android stub: desktop automation not supported.
++	#[cfg(all(target_os = "android", not(test)))]
++	AndroidStub,
+ }
+ 
+ impl AxHandle {
+@@ -45,6 +48,8 @@ impl AxHandle {
+ 			Self::Test(_) => true,
+ 			#[cfg(test)]
+ 			Self::TestUnidentified(_) => false,
++			#[cfg(all(target_os = "android", not(test)))]
++			Self::AndroidStub => false,
+ 		}
+ 	}
+ }
+@@ -67,6 +72,8 @@ impl PartialEq for AxHandle {
+ 			(Self::TestUnidentified(_), Self::TestUnidentified(_)) => true,
+ 			#[cfg(test)]
+ 			_ => false,
++			#[cfg(all(target_os = "android", not(test)))]
++			_ => false,
+ 		}
+ 	}
+ }
+@@ -86,6 +93,8 @@ impl Hash for AxHandle {
+ 			Self::Test(id) => id.hash(state),
+ 			#[cfg(test)]
+ 			Self::TestUnidentified(_) => {},
++			#[cfg(all(target_os = "android", not(test)))]
++			Self::AndroidStub => {},
+ 		}
+ 	}
+ }
+diff --git a/crates/pi-natives/src/desktop/control.rs b/crates/pi-natives/src/desktop/control.rs
+index 5896162..87a9bf2 100644
+--- a/crates/pi-natives/src/desktop/control.rs
++++ b/crates/pi-natives/src/desktop/control.rs
+@@ -474,6 +474,8 @@ struct ControlLease {
+ 	_escape: Option<windows::EscapeMonitor>,
+ 	#[cfg(target_os = "linux")]
+ 	_escape: Option<linux::EscapeMonitor>,
++	#[cfg(target_os = "android")]
++	_escape: Option<()>,
+ 	_kernel: KernelOwner,
+ 	running: AtomicBool,
+ }
+@@ -535,6 +537,8 @@ impl ControlLease {
+ 			_escape: Some(escape),
+ 			#[cfg(target_os = "linux")]
+ 			_escape: escape,
++			#[cfg(target_os = "android")]
++			_escape: None,
+ 			_kernel: kernel,
+ 			running: AtomicBool::new(false),
+ 		})
+diff --git a/crates/pi-natives/src/lib.rs b/crates/pi-natives/src/lib.rs
+index 5032b5b..35680b3 100644
+--- a/crates/pi-natives/src/lib.rs
++++ b/crates/pi-natives/src/lib.rs
+@@ -27,6 +27,10 @@ pub mod applefm;
+ pub mod ast;
+ pub mod audio;
+ pub mod block;
++#[cfg(not(target_os = "android"))]
++pub mod clipboard;
++#[cfg(target_os = "android")]
++#[path = "clipboard_android.rs"]
+ pub mod clipboard;
+ pub mod crash_handler;
+ pub mod desktop;
+diff --git a/crates/pi-shell/src/process.rs b/crates/pi-shell/src/process.rs
+index fc1c1c8..c01d501 100644
+--- a/crates/pi-shell/src/process.rs
++++ b/crates/pi-shell/src/process.rs
+@@ -16,7 +16,7 @@ pub use pi_builtins::ProcessStatus;
+ 
+ use crate::cancel::CancelToken;
+ 
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ mod platform {
+ 	use std::{
+ 		collections::HashSet,
+diff --git a/crates/pi-shell/src/shell.rs b/crates/pi-shell/src/shell.rs
+index 9d27628..f28011b 100644
+--- a/crates/pi-shell/src/shell.rs
++++ b/crates/pi-shell/src/shell.rs
+@@ -2914,7 +2914,7 @@ mod tests {
+ 		assert!(still_running, "{signal} should be ignored by the test process");
+ 	}
+ 
+-	#[cfg(target_os = "linux")]
++	#[cfg(any(target_os = "linux", target_os = "android"))]
+ 	#[tokio::test(flavor = "multi_thread")]
+ 	async fn pkill_queue_option_consumes_its_value() {
+ 		let (_dir, command, name) = process_test_command("opq");
+@@ -6295,7 +6295,7 @@ mod tests {
+ 	/// A descriptor the shell lacks is reported under the name the user
+ 	/// typed, and `readlink` reads `/dev/stdin` as the symlink it is instead
+ 	/// of the descriptor behind it.
+-	#[cfg(target_os = "linux")]
++	#[cfg(any(target_os = "linux", target_os = "android"))]
+ 	#[tokio::test(flavor = "multi_thread")]
+ 	async fn descriptor_paths_keep_their_spelling() {
+ 		let command = "pgrep -F /dev/fd/9; sed 'w /dev/fd/9' <<< x; readlink /dev/stdin <<< x";
