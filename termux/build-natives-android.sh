@@ -21,6 +21,14 @@ export PATH="$NDK_BIN:$PATH"
 export CC_aarch64_linux_android=aarch64-linux-android35-clang
 export CXX_aarch64_linux_android=aarch64-linux-android35-clang++
 
+# Cargo's linker/ar for the Android target must also come from the NDK.
+# The original VM build silently got these from a machine-global
+# ~/.cargo/config.toml; a CI runner has no such file, and without them
+# rustc falls back to a host linker that cannot find the Android system
+# libraries (-llog, -lunwind) in the NDK sysroot.
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android35-clang"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_AR="$NDK_BIN/llvm-ar"
+
 if ! grep -q '^\[profile\.ci\]' Cargo.toml; then
 	cat >> Cargo.toml <<'EOF'
 
