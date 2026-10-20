@@ -1,0 +1,103 @@
+name: Build Termux (Android aarch64)
+
+# Builds the complete oh-my-pi Termux package on a GitHub-hosted runner:
+# clones upstream oh-my-pi v18.12.2, cross-compiles the Rust pi-natives
+# addon for aarch64-linux-android, compiles omp.bin with Bun, and zips
+# everything with the installer. Uses the scripts in termux/ of this repo.
+#
+# Run it manually from the Actions tab. Leave release_tag empty to only
+# produce a workflow artifact, or fill it (e.g. v18.12.2-termux.2) to also
+# publish a GitHub Release with the zip attached.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Also publish a Release with this tag (empty = artifact only)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout this repo (build scripts)
+        uses: actions/checkout@v4
+        with:
+          path: port
+
+      - name: Clone oh-my-pi v18.12.2
+        run: git clone --depth 1 --branch v18.12.2 https://github.com/can1357/oh-my-pi.git omp-src
+
+      - name: Copy Termux build scripts into the source tree
+        run: cp -r port/termux omp-src/termux
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust (pinned nightly + Android target)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-06
+          targets: aarch64-linux-android
+
+      - name: Install ninja (opusic-sys build script needs it)
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Download Android NDK r28c
+        run: |
+          curl -sL https://dl.google.com/android/repository/android-ndk-r28c-linux.zip -o "$RUNNER_TEMP/ndk.zip"
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$HOME"
+          echo "ANDROID_NDK_HOME=$HOME/android-ndk-r28c" >> "$GITHUB_ENV"
+
+      - name: Cache cargo registry + target dir
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            omp-src/target
+          key: cargo-android-${{ hashFiles('omp-src/Cargo.lock') }}
+          restore-keys: cargo-android-
+
+      - name: Install JS dependencies + generate artifacts
+        working-directory: omp-src
+        run: |
+          bun install
+          bun run gen:stats
+          bun run gen:tool-views
+
+      - name: Build Rust natives for Android (profile ci, thin LTO)
+        working-directory: omp-src
+        run: |
+          chmod +x termux/build-natives-android.sh
+          ./termux/build-natives-android.sh
+
+      - name: Compile omp.bin (bun-android-arm64)
+        working-directory: omp-src
+        run: bun termux/build-omp-android.ts
+
+      - name: Package zip
+        working-directory: omp-src
+        run: |
+          cp packages/natives/native/pi_natives.android-arm64.node termux/
+          cd termux
+          zip -j ../omp-termux-android-aarch64.zip omp.bin pi_natives.android-arm64.node install.sh omp
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: omp-termux-android-aarch64
+          path: omp-src/omp-termux-android-aarch64.zip
+
+      - name: Publish release (only when release_tag is set)
+        if: inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: oh-my-pi 18.12.2 for Termux (Android aarch64)
+          files: omp-src/omp-termux-android-aarch64.zip
