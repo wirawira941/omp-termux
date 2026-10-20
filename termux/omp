@@ -1,0 +1,7 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# oh-my-pi launcher for Termux
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+LIBEXEC="$PREFIX/libexec/omp-termux"
+# Fix for Bun on Android: process.execPath points to linker64, not the binary
+export OMP_PACKAGE_DIR="$LIBEXEC"
+exec "$LIBEXEC/omp.bin" "$@"
