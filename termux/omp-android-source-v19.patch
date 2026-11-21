@@ -414,3 +414,25 @@ index 76d67f7..cd6c8ba 100644
  }
  
  /// Reads a whole host file. Under a cancellable scope the read goes through
+diff --git a/crates/xfs/src/watch/inotify.rs b/crates/xfs/src/watch/inotify.rs
+index 451dfc7..db311be 100644
+--- a/crates/xfs/src/watch/inotify.rs
++++ b/crates/xfs/src/watch/inotify.rs
+@@ -259,7 +259,7 @@ impl State {
+ 				});
+ 			if gone {
+ 				// SAFETY: plain syscall on a live descriptor.
+-				unsafe { libc::inotify_rm_watch(inotify, wd) };
++				unsafe { libc::inotify_rm_watch(inotify, wd as _) };
+ 			}
+ 			!gone
+ 		});
+@@ -369,7 +369,7 @@ impl State {
+ 			let path = watch.path.clone();
+ 			self.forget_below(&path, false);
+ 			// SAFETY: plain syscall on a live descriptor.
+-			unsafe { libc::inotify_rm_watch(self.inotify.as_raw_fd(), wd) };
++			unsafe { libc::inotify_rm_watch(self.inotify.as_raw_fd(), wd as _) };
+ 		}
+ 		Ok(())
+ 	}
