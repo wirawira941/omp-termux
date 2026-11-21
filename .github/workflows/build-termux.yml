@@ -1,17 +1,21 @@
 name: Build Termux (Android aarch64)
 
 # Builds the complete oh-my-pi Termux package on a GitHub-hosted runner:
-# clones upstream oh-my-pi v18.12.2, cross-compiles the Rust pi-natives
-# addon for aarch64-linux-android, compiles omp.bin with Bun, and zips
-# everything with the installer. Uses the scripts in termux/ of this repo.
+# clones the requested upstream tag, cross-compiles the Rust natives addon
+# for aarch64-linux-android, compiles omp.bin with Bun, and zips everything
+# with the installer. Uses the scripts in termux/ of this repo.
 #
 # Run it manually from the Actions tab. Leave release_tag empty to only
-# produce a workflow artifact, or fill it (e.g. v18.12.2-termux.2) to also
+# produce a workflow artifact, or fill it (e.g. v19.1.0-termux.1) to also
 # publish a GitHub Release with the zip attached.
 
 on:
   workflow_dispatch:
     inputs:
+      omp_version:
+        description: "Upstream oh-my-pi tag (e.g. v19.1.0)"
+        required: true
+        default: "v19.1.0"
       release_tag:
         description: "Also publish a Release with this tag (empty = artifact only)"
         required: false
@@ -30,8 +34,8 @@ jobs:
         with:
           path: port
 
-      - name: Clone oh-my-pi v18.12.2
-        run: git clone --depth 1 --branch v18.12.2 https://github.com/can1357/oh-my-pi.git omp-src
+      - name: Clone oh-my-pi ${{ inputs.omp_version }}
+        run: git clone --depth 1 --branch ${{ inputs.omp_version }} https://github.com/can1357/oh-my-pi.git omp-src
 
       - name: Copy Termux build scripts into the source tree
         run: cp -r port/termux omp-src/termux
@@ -42,7 +46,7 @@ jobs:
       - name: Setup Rust (pinned nightly + Android target)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-10-06
+          toolchain: nightly-2026-11-08
           targets: aarch64-linux-android
 
       - name: Install ninja (opusic-sys build script needs it)
@@ -61,15 +65,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             omp-src/target
-          key: cargo-android-${{ hashFiles('omp-src/Cargo.lock') }}
-          restore-keys: cargo-android-
+          key: cargo-android-${{ inputs.omp_version }}-${{ hashFiles('omp-src/Cargo.lock') }}
+          restore-keys: cargo-android-${{ inputs.omp_version }}-
 
       - name: Install JS dependencies + generate artifacts
         working-directory: omp-src
         run: |
           bun install
           bun run gen:stats
-          bun run gen:tool-views
 
       - name: Build Rust natives for Android (profile ci, thin LTO)
         working-directory: omp-src
@@ -99,5 +102,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag }}
-          name: oh-my-pi 18.12.2 for Termux (Android aarch64)
+          name: oh-my-pi ${{ inputs.omp_version }} for Termux (Android aarch64)
           files: omp-src/omp-termux-android-aarch64.zip

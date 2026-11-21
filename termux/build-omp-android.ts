@@ -33,7 +33,6 @@ await compileCodingAgent({
 	repoRoot,
 	entrypoint: path.join(packageDir, "src", "cli.ts"),
 	outfile: path.join(import.meta.dir, "omp.bin"),
-	transformersVersion: "4.2.0",
 	native: null, // Android natives ship as a separate .node file
 	target: "bun-android-arm64",
 });

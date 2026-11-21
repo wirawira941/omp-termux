@@ -48,12 +48,22 @@ fi
 # (pi-builtins fails with 15 "configured out" errors). The --check guard
 # makes re-runs on an already-patched tree a no-op.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if git apply --check "$SCRIPT_DIR/omp-android-source.patch" 2>/dev/null; then
-	git apply "$SCRIPT_DIR/omp-android-source.patch"
-	echo "Applied omp-android-source.patch"
-fi
+# Try the v18 patch first (still used on the v18 branch), then the v19
+# rebase. Only one should apply to a given upstream tag.
+for patch in omp-android-source.patch omp-android-source-v19.patch; do
+	if [ -f "$SCRIPT_DIR/$patch" ] && git apply --check "$SCRIPT_DIR/$patch" 2>/dev/null; then
+		git apply "$SCRIPT_DIR/$patch"
+		echo "Applied $patch"
+		break
+	fi
+done
 
-cargo build -p pi-natives --target aarch64-linux-android --profile ci
+if grep -q '^name = "omp-natives"' crates/natives/Cargo.toml; then
+	NATIVES_PKG=omp-natives
+else
+	NATIVES_PKG=pi-natives
+fi
+cargo build -p "$NATIVES_PKG" --target aarch64-linux-android --profile ci
 
 # A raw cargo build carries no version stamp, and the addon loader rejects
 # unstamped addons — copy the library into place and stamp it.

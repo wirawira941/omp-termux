@@ -1,0 +1,389 @@
+diff --git a/crates/builtins/src/lib.rs b/crates/builtins/src/lib.rs
+index 46d3e61..237d5e7 100644
+--- a/crates/builtins/src/lib.rs
++++ b/crates/builtins/src/lib.rs
+@@ -161,7 +161,7 @@ mod ln;
+ mod ls;
+ #[cfg(all(
+ 	feature = "util.lsof",
+-	any(target_os = "linux", target_os = "macos", target_os = "windows")
++	any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows")
+ ))]
+ mod lsof;
+ #[cfg(feature = "util.mkdir")]
+@@ -278,6 +278,6 @@ pub use proc_snapshot::{ProcInfo, ProcessStatus};
+ /// implementation.
+ #[cfg(all(
+ 	feature = "util.procs",
+-	any(target_os = "linux", target_os = "macos", target_os = "windows")
++	any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows")
+ ))]
+ pub use proc_snapshot::sys as proc_sys;
+diff --git a/crates/builtins/src/proc_match.rs b/crates/builtins/src/proc_match.rs
+index d703e66..613b578 100644
+--- a/crates/builtins/src/proc_match.rs
++++ b/crates/builtins/src/proc_match.rs
+@@ -340,7 +340,7 @@ const SIGNALS: &[(&str, i32)] = &[
+ ];
+ 
+ /// Whether `number` is a real-time signal (Linux), which has no name here.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ fn is_realtime(number: i32) -> bool {
+ 	(libc::SIGRTMIN()..=libc::SIGRTMAX()).contains(&number)
+ }
+@@ -367,7 +367,7 @@ async fn wait_for_exits(processes: &[proc_snapshot::ProcInfo]) {
+ }
+ 
+ /// Waits on a pidfd per process and returns the processes that need polling.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ async fn wait_for_watchable_exits(
+ 	processes: &[proc_snapshot::ProcInfo],
+ ) -> Vec<&proc_snapshot::ProcInfo> {
+@@ -419,7 +419,7 @@ async fn wait_for_watchable_exits(
+ }
+ 
+ /// No exit notification primitive is wired up here; every process is polled.
+-#[cfg(not(any(target_os = "linux", windows)))]
++#[cfg(not(any(target_os = "linux", target_os = "android", windows)))]
+ async fn wait_for_watchable_exits(
+ 	processes: &[proc_snapshot::ProcInfo],
+ ) -> Vec<&proc_snapshot::ProcInfo> {
+@@ -1021,7 +1021,7 @@ fn write_proc_match_help(
+ 	if mode == ProcMatchMode::Kill {
+ 		writeln!(output, "  -SIGNAL, --signal SIGNAL  choose signal (default TERM)")?;
+ 	}
+-	#[cfg(target_os = "linux")]
++	#[cfg(any(target_os = "linux", target_os = "android"))]
+ 	if mode == ProcMatchMode::Kill {
+ 		writeln!(output, "  -q value, --queue value  send an integer with sigqueue")?;
+ 	}
+diff --git a/crates/builtins/src/proc_snapshot.rs b/crates/builtins/src/proc_snapshot.rs
+index 7bbe5a2..316ac59 100644
+--- a/crates/builtins/src/proc_snapshot.rs
++++ b/crates/builtins/src/proc_snapshot.rs
+@@ -116,7 +116,7 @@ fn parse_procargs2(buffer: &[u8]) -> Vec<String> {
+ }
+ 
+ /// Linux process primitives: procfs and pidfds.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ pub mod sys {
+ 	use std::{
+ 		fs,
+@@ -197,7 +197,7 @@ pub mod sys {
+ 	}
+ }
+ 
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ mod proc_snapshot {
+ 	use std::{collections::HashMap, fs, os::fd::AsFd, time::Duration};
+ 
+@@ -1876,7 +1876,7 @@ mod proc_snapshot {
+ 	}
+ }
+ 
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ pub use proc_snapshot::{ProcInfo, threads_by_pid};
+ 
+ /// The processes a signal must never reach: this one and its ancestors.
+@@ -1900,7 +1900,7 @@ pub use proc_snapshot::{ProcInfo, threads_by_pid};
+ ///
+ /// Listing is unaffected: `pgrep` still reports ancestors and `ps` still shows
+ /// them. Only signalling consults this.
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ pub struct HostProcesses {
+ 	/// This process and its ancestors, nearest first.
+ 	pub pids:  smallvec::SmallVec<[i32; 16]>,
+@@ -1913,7 +1913,7 @@ pub struct HostProcesses {
+ /// Keeping the walk over this rather than over [`ProcInfo`] lets the recycling
+ /// cases — which are otherwise only reachable by winning a race against the OS —
+ /// be tested with a synthetic tree.
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ #[derive(Clone, Copy)]
+ struct ChainNode {
+ 	ppid:  Option<i32>,
+@@ -1923,7 +1923,7 @@ struct ChainNode {
+ 	start: u64,
+ }
+ 
+-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows"))]
+ impl HostProcesses {
+ 	/// Whether signalling `target` would reach this process or one of its
+ 	/// ancestors.
+@@ -2009,7 +2009,7 @@ impl HostProcesses {
+ 	}
+ }
+ 
+-#[cfg(all(test, any(target_os = "linux", target_os = "macos", target_os = "windows")))]
++#[cfg(all(test, any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows")))]
+ mod tests {
+ 	use super::{HostProcesses, ProcInfo};
+ 
+diff --git a/crates/builtins/src/ps.rs b/crates/builtins/src/ps.rs
+index 8ea2936..8fe0a9f 100644
+--- a/crates/builtins/src/ps.rs
++++ b/crates/builtins/src/ps.rs
+@@ -1281,7 +1281,7 @@ fn format_ps_elapsed(duration: Duration) -> String {
+ 	}
+ }
+ 
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ fn ps_total_memory_bytes() -> Option<u64> {
+ 	let value = fs::read_to_string("/proc/meminfo")
+ 		.ok()?
+diff --git a/crates/builtins/src/uptime.rs b/crates/builtins/src/uptime.rs
+index bacf570..63daa12 100644
+--- a/crates/builtins/src/uptime.rs
++++ b/crates/builtins/src/uptime.rs
+@@ -26,9 +26,9 @@ mod options {
+ /// `UTMP_FILE`).
+ #[cfg(target_vendor = "apple")]
+ const UTMP_FILE: &str = "/var/run/utmpx";
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ const UTMP_FILE: &str = "/var/run/utmp";
+-#[cfg(not(any(target_vendor = "apple", target_os = "linux")))]
++#[cfg(not(any(target_vendor = "apple", target_os = "linux", target_os = "android")))]
+ const UTMP_FILE: &str = "/etc/utmp";
+ 
+ /// Parsed `uptime` invocation.
+@@ -436,7 +436,7 @@ fn system_boot_time(_host: &Host) -> Option<i64> {
+ 
+ /// gnulib's Linux fallbacks: the modification time of a file only the boot
+ /// sequence touches, else now minus `CLOCK_BOOTTIME`.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ fn system_boot_time(host: &Host) -> Option<i64> {
+ 	const BOOT_TOUCHED_FILES: [&str; 4] = [
+ 		"/var/lib/systemd/random-seed",
+@@ -473,7 +473,7 @@ fn system_boot_time(_host: &Host) -> Option<i64> {
+ 	Some(Timestamp::now().as_second() - i64::try_from(since_boot).ok()?)
+ }
+ 
+-#[cfg(not(any(target_vendor = "apple", target_os = "linux", windows)))]
++#[cfg(not(any(target_vendor = "apple", target_os = "linux", target_os = "android", windows)))]
+ fn system_boot_time(_host: &Host) -> Option<i64> {
+ 	None
+ }
+diff --git a/crates/natives/Cargo.toml b/crates/natives/Cargo.toml
+index 97f698e..27bcd02 100644
+--- a/crates/natives/Cargo.toml
++++ b/crates/natives/Cargo.toml
+@@ -18,7 +18,6 @@ workspace = true
+ [dependencies]
+ anyhow.workspace = true
+ async-trait.workspace = true
+-arboard.workspace = true
+ base64.workspace = true
+ fontdue.workspace = true
+ grep-matcher.workspace = true
+@@ -143,3 +142,6 @@ zlib-rs = "0.6"
+ # participates in resolution, but the unused-dependency lint stays quiet.
+ [target."cfg(false)".dependencies]
+ find-msvc-tools.workspace = true
++
++[target.'cfg(not(target_os = "android"))'.dependencies]
++arboard.workspace = true
+diff --git a/crates/natives/src/clipboard_android.rs b/crates/natives/src/clipboard_android.rs
+new file mode 100644
+index 0000000..0a25a5e
+--- /dev/null
++++ b/crates/natives/src/clipboard_android.rs
+@@ -0,0 +1,39 @@
++//! Clipboard stub for Android.
++//!
++//! arboard does not support Android, so clipboard operations are no-ops here.
++
++use napi::{JsString, bindgen_prelude::*};
++use napi_derive::napi;
++
++use crate::task;
++
++/// Clipboard image payload encoded as PNG bytes.
++#[napi(object)]
++pub struct ClipboardImage {
++	/// PNG-encoded image bytes.
++	pub data:      Uint8Array,
++	/// MIME type for the encoded image payload.
++	pub mime_type: String,
++}
++
++/// Android stub: clipboard not supported.
++#[napi]
++pub fn copy_to_clipboard(_text: JsString) -> Result<()> {
++	Err(Error::from_reason("Clipboard not supported on Android"))
++}
++
++/// Android stub: clipboard not supported.
++#[napi]
++pub fn read_text_from_clipboard() -> task::Promise<Option<String>> {
++	task::blocking("clipboard.read_text", (), move |_| -> Result<Option<String>> {
++		Ok(None)
++	})
++}
++
++/// Android stub: clipboard not supported.
++#[napi]
++pub fn read_image_from_clipboard() -> task::Promise<Option<ClipboardImage>> {
++	task::blocking("clipboard.read_image", (), move |_| -> Result<Option<ClipboardImage>> {
++		Ok(None)
++	})
++}
+diff --git a/crates/natives/src/desktop/ax.rs b/crates/natives/src/desktop/ax.rs
+index 1529dd4..0fa99da 100644
+--- a/crates/natives/src/desktop/ax.rs
++++ b/crates/natives/src/desktop/ax.rs
+@@ -30,6 +30,9 @@ pub enum AxHandle {
+ 	/// `RuntimeId` cannot be read: all of them compare equal.
+ 	#[cfg(test)]
+ 	TestUnidentified(u64),
++	/// Android stub: desktop automation not supported.
++	#[cfg(all(target_os = "android", not(test)))]
++	AndroidStub,
+ }
+ 
+ impl AxHandle {
+@@ -48,6 +51,8 @@ impl AxHandle {
+ 			Self::Test(_) => true,
+ 			#[cfg(test)]
+ 			Self::TestUnidentified(_) => false,
++			#[cfg(all(target_os = "android", not(test)))]
++			Self::AndroidStub => false,
+ 		}
+ 	}
+ }
+@@ -70,6 +75,8 @@ impl PartialEq for AxHandle {
+ 			(Self::TestUnidentified(_), Self::TestUnidentified(_)) => true,
+ 			#[cfg(test)]
+ 			_ => false,
++			#[cfg(all(target_os = "android", not(test)))]
++			_ => false,
+ 		}
+ 	}
+ }
+@@ -89,6 +96,8 @@ impl Hash for AxHandle {
+ 			Self::Test(id) => id.hash(state),
+ 			#[cfg(test)]
+ 			Self::TestUnidentified(_) => {},
++			#[cfg(all(target_os = "android", not(test)))]
++			Self::AndroidStub => {},
+ 		}
+ 	}
+ }
+diff --git a/crates/natives/src/desktop/control.rs b/crates/natives/src/desktop/control.rs
+index 836fe42..80e44a8 100644
+--- a/crates/natives/src/desktop/control.rs
++++ b/crates/natives/src/desktop/control.rs
+@@ -594,6 +594,8 @@ struct ControlLease {
+ 	_escape: Option<windows::EscapeMonitor>,
+ 	#[cfg(target_os = "linux")]
+ 	_escape: Option<linux::EscapeMonitor>,
++	#[cfg(target_os = "android")]
++	_escape: Option<()>,
+ 	_kernel: KernelOwner,
+ 	running: AtomicBool,
+ }
+@@ -659,6 +661,8 @@ impl ControlLease {
+ 			_escape: Some(escape),
+ 			#[cfg(target_os = "linux")]
+ 			_escape: escape,
++			#[cfg(target_os = "android")]
++			_escape: None,
+ 			_kernel: kernel,
+ 			running: AtomicBool::new(false),
+ 		})
+diff --git a/crates/natives/src/lib.rs b/crates/natives/src/lib.rs
+index af3a083..103ae69 100644
+--- a/crates/natives/src/lib.rs
++++ b/crates/natives/src/lib.rs
+@@ -30,6 +30,10 @@ pub mod audio;
+ pub mod block;
+ #[cfg(all(target_os = "linux", target_env = "gnu"))]
+ mod bundled_libc;
++#[cfg(not(target_os = "android"))]
++pub mod clipboard;
++#[cfg(target_os = "android")]
++#[path = "clipboard_android.rs"]
+ pub mod clipboard;
+ pub mod console_input;
+ pub mod console_threads;
+diff --git a/crates/shell/src/process/host.rs b/crates/shell/src/process/host.rs
+index e09adda..3ca832f 100644
+--- a/crates/shell/src/process/host.rs
++++ b/crates/shell/src/process/host.rs
+@@ -576,9 +576,9 @@ pub fn ignored_on_entry() -> crate::bash::SigSet {
+ pub fn inherited_fds(embedded: bool) -> Vec<(i32, Box<dyn File>)> {
+ 	use std::os::fd::FromRawFd;
+ 
+-	#[cfg(target_os = "linux")]
++	#[cfg(any(target_os = "linux", target_os = "android"))]
+ 	let mut fds = open_fds();
+-	#[cfg(not(target_os = "linux"))]
++	#[cfg(not(any(target_os = "linux", target_os = "android")))]
+ 	let mut fds: Vec<i32> = {
+ 		let Ok(entries) = std::fs::read_dir("/dev/fd") else {
+ 			return Vec::new();
+@@ -621,7 +621,7 @@ pub fn inherited_fds(embedded: bool) -> Vec<(i32, Box<dyn File>)> {
+ 
+ /// Enumerate inherited descriptor candidates without libc's 32 KiB
+ /// directory buffer, which otherwise faults in unused startup pages.
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ fn open_fds() -> Vec<i32> {
+ 	use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+ 
+@@ -671,7 +671,7 @@ fn open_fds() -> Vec<i32> {
+ 	fds
+ }
+ 
+-#[cfg(all(test, target_os = "linux"))]
++#[cfg(all(test, any(target_os = "linux", target_os = "android")))]
+ #[test]
+ fn open_fds_spans_directory_batches() {
+ 	use std::os::fd::AsRawFd;
+diff --git a/crates/shell/src/process/signals.rs b/crates/shell/src/process/signals.rs
+index 200294c..0998c7d 100644
+--- a/crates/shell/src/process/signals.rs
++++ b/crates/shell/src/process/signals.rs
+@@ -40,13 +40,13 @@ mod unix {
+ 
+ 	/// Read Linux's disposition bitmap in one query, falling back to
+ 	/// sigaction when procfs is unavailable or its status format changes.
+-	#[cfg(target_os = "linux")]
++	#[cfg(any(target_os = "linux", target_os = "android"))]
+ 	fn ignored_from_proc() -> Option<SigSet> {
+ 		let file = std::fs::File::open("/proc/self/status").ok()?;
+ 		ignored_from_status(io::BufReader::new(file))
+ 	}
+ 
+-	#[cfg(target_os = "linux")]
++	#[cfg(any(target_os = "linux", target_os = "android"))]
+ 	fn ignored_from_status(mut input: impl io::BufRead) -> Option<SigSet> {
+ 		let mut line = Vec::new();
+ 		while input.read_until(b'\n', &mut line).ok()? != 0 {
+@@ -68,7 +68,7 @@ mod unix {
+ 		None
+ 	}
+ 
+-	#[cfg(all(test, target_os = "linux"))]
++	#[cfg(all(test, any(target_os = "linux", target_os = "android")))]
+ 	mod tests {
+ 		use super::*;
+ 
+@@ -109,7 +109,7 @@ mod unix {
+ 	impl Signals {
+ 		/// Signals ignored when the process started (inherited dispositions).
+ 		pub fn ignored() -> SigSet {
+-			#[cfg(target_os = "linux")]
++			#[cfg(any(target_os = "linux", target_os = "android"))]
+ 			if let Some(ignored) = ignored_from_proc() {
+ 				return ignored;
+ 			}
