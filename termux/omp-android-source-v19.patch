@@ -387,3 +387,30 @@ index 200294c..0998c7d 100644
  			if let Some(ignored) = ignored_from_proc() {
  				return ignored;
  			}
+diff --git a/crates/vfs/src/fs.rs b/crates/vfs/src/fs.rs
+index 76d67f7..cd6c8ba 100644
+--- a/crates/vfs/src/fs.rs
++++ b/crates/vfs/src/fs.rs
+@@ -510,6 +510,13 @@ fn helper_exited() -> io::Error {
+ 	io::Error::other("FIFO open thread exited")
+ }
+ 
++/// `AT_EACCESS` is a Linux kernel flag; bionic exposes `faccessat` but the
++/// Rust libc crate omits the constant for Android.
++#[cfg(target_os = "android")]
++const AT_EACCESS: libc::c_int = 0x200;
++#[cfg(not(target_os = "android"))]
++const AT_EACCESS: libc::c_int = AT_EACCESS;
++
+ /// Whether this process may open `path` with `mode` (`R_OK`, `W_OK`), by its
+ /// effective IDs.
+ #[cfg(unix)]
+@@ -519,7 +526,7 @@ fn may_access(path: &Path, mode: libc::c_int) -> bool {
+ 		return false;
+ 	};
+ 	// SAFETY: `path` is a NUL-terminated string alive for the call.
+-	unsafe { libc::faccessat(libc::AT_FDCWD, path.as_ptr(), mode, libc::AT_EACCESS) == 0 }
++	unsafe { libc::faccessat(libc::AT_FDCWD, path.as_ptr(), mode, AT_EACCESS) == 0 }
+ }
+ 
+ /// Reads a whole host file. Under a cancellable scope the read goes through
