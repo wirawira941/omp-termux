@@ -19,11 +19,27 @@ index 46d3e61..237d5e7 100644
 +	any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "windows")
  ))]
  pub use proc_snapshot::sys as proc_sys;
+diff --git a/crates/builtins/src/lsof.rs b/crates/builtins/src/lsof.rs
+index 01ce8b8..3373771 100644
+--- a/crates/builtins/src/lsof.rs
++++ b/crates/builtins/src/lsof.rs
+@@ -56,9 +56,9 @@ use crate::{
+ 	proc_snapshot::ProcInfo,
+ };
+ 
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ mod linux;
+-#[cfg(target_os = "linux")]
++#[cfg(any(target_os = "linux", target_os = "android"))]
+ use linux as platform;
+ #[cfg(target_os = "macos")]
+ mod macos;
 diff --git a/crates/builtins/src/proc_match.rs b/crates/builtins/src/proc_match.rs
-index d703e66..613b578 100644
+index d703e66..8488bf1 100644
 --- a/crates/builtins/src/proc_match.rs
 +++ b/crates/builtins/src/proc_match.rs
-@@ -340,7 +340,7 @@ const SIGNALS: &[(&str, i32)] = &[
+@@ -340,13 +340,13 @@ const SIGNALS: &[(&str, i32)] = &[
  ];
  
  /// Whether `number` is a real-time signal (Linux), which has no name here.
@@ -31,6 +47,13 @@ index d703e66..613b578 100644
 +#[cfg(any(target_os = "linux", target_os = "android"))]
  fn is_realtime(number: i32) -> bool {
  	(libc::SIGRTMIN()..=libc::SIGRTMAX()).contains(&number)
+ }
+ 
+ /// Whether `number` is a real-time signal; none are recognized here.
+-#[cfg(not(target_os = "linux"))]
++#[cfg(not(any(target_os = "linux", target_os = "android")))]
+ const fn is_realtime(_number: i32) -> bool {
+ 	false
  }
 @@ -367,7 +367,7 @@ async fn wait_for_exits(processes: &[proc_snapshot::ProcInfo]) {
  }
@@ -139,6 +162,35 @@ index 8ea2936..8fe0a9f 100644
  fn ps_total_memory_bytes() -> Option<u64> {
  	let value = fs::read_to_string("/proc/meminfo")
  		.ok()?
+diff --git a/crates/builtins/src/rsync/transport/tcp/sock_unix.rs b/crates/builtins/src/rsync/transport/tcp/sock_unix.rs
+index d28e8c0..a520472 100644
+--- a/crates/builtins/src/rsync/transport/tcp/sock_unix.rs
++++ b/crates/builtins/src/rsync/transport/tcp/sock_unix.rs
+@@ -139,7 +139,7 @@ pub(super) fn numeric_host(addr: &Addr) -> String {
+ 			addr.as_ptr(),
+ 			addr.len,
+ 			buf.as_mut_ptr(),
+-			buf.len() as libc::socklen_t,
++			buf.len() as _,
+ 			std::ptr::null_mut(),
+ 			0,
+ 			libc::NI_NUMERICHOST,
+diff --git a/crates/builtins/src/rsync/tree/sys.rs b/crates/builtins/src/rsync/tree/sys.rs
+index e15c133..302ad43 100644
+--- a/crates/builtins/src/rsync/tree/sys.rs
++++ b/crates/builtins/src/rsync/tree/sys.rs
+@@ -271,6 +271,11 @@ pub(crate) fn mknodat(
+ pub(crate) fn mkfifoat(dir: Option<BorrowedFd<'_>>, name: &CStr, mode: u32) -> io::Result<()> {
+ 	check(retry(|| {
+ 		// SAFETY: valid C string and dirfd.
++		#[cfg(target_os = "android")]
++		unsafe {
++			libc::mknodat(dirfd(dir), name.as_ptr(), (mode as libc::mode_t) | libc::S_IFIFO, 0)
++		}
++		#[cfg(not(target_os = "android"))]
+ 		unsafe { libc::mkfifoat(dirfd(dir), name.as_ptr(), mode as libc::mode_t) }
+ 	}))
+ }
 diff --git a/crates/builtins/src/uptime.rs b/crates/builtins/src/uptime.rs
 index bacf570..63daa12 100644
 --- a/crates/builtins/src/uptime.rs
